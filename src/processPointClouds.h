@@ -3,6 +3,7 @@
 #ifndef PROCESSPOINTCLOUDS_H_
 #define PROCESSPOINTCLOUDS_H_
 
+#include "kdtree.h"
 #include "render/box.h"
 #include <chrono>
 #include <ctime>
@@ -49,12 +50,24 @@ public:
                  int maxIterations,
                  float distanceThreshold);
 
+    std::vector<typename pcl::PointCloud<PointT>::Ptr> euclideanClustering(typename pcl::PointCloud<PointT>::Ptr cloud,
+                                                                           float clusterTolerance,
+                                                                           int minSize,
+                                                                           int maxSize);
+
     std::vector<typename pcl::PointCloud<PointT>::Ptr> Clustering(typename pcl::PointCloud<PointT>::Ptr cloud,
                                                                   float clusterTolerance,
                                                                   int minSize,
                                                                   int maxSize);
 
     Box BoundingBox(typename pcl::PointCloud<PointT>::Ptr cluster);
+
+    void Proximity(const int index,
+                   const typename pcl::PointCloud<PointT>::Ptr cloud,
+                   typename pcl::PointCloud<PointT>::Ptr cluster,
+                   std::vector<bool> &processed,
+                   KdTree *tree,
+                   const float clusterTolerance);
 
     void savePcd(typename pcl::PointCloud<PointT>::Ptr cloud, std::string file);
 

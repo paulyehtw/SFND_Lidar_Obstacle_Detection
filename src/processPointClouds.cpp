@@ -103,7 +103,6 @@ ProcessPointClouds<PointT>::RansacPlane(const typename pcl::PointCloud<PointT>::
     // Time segmentation process
     auto startTime = std::chrono::steady_clock::now();
 
-    std::unordered_set<int> inliersResult;
     pcl::PointIndices::Ptr inlierCloud(new pcl::PointIndices);
     srand(time(NULL));
 
@@ -197,6 +196,71 @@ ProcessPointClouds<PointT>::SegmentPlane(
     std::cout << "plane segmentation took " << elapsedTime.count() << " milliseconds" << std::endl;
 
     return SeparateClouds(inliers, cloud);
+}
+
+template <typename PointT>
+void ProcessPointClouds<PointT>::Proximity(const int index,
+                                           const typename pcl::PointCloud<PointT>::Ptr cloud,
+                                           typename pcl::PointCloud<PointT>::Ptr cluster,
+                                           std::vector<bool> &processed,
+                                           KdTree *tree,
+                                           const float clusterTolerance)
+{
+    processed[index] = true;
+    // cluster.push_back(index);
+    cluster->points.push_back(cloud->points[index]);
+
+    std::vector<int> nearbyPointIndices = tree->searchNNs(cloud->points[index], clusterTolerance);
+
+    for (int id : nearbyPointIndices)
+    {
+        if (processed[id] == false)
+        {
+            Proximity(id, cloud, cluster, processed, tree, clusterTolerance);
+        }
+    }
+}
+
+template <typename PointT>
+std::vector<typename pcl::PointCloud<PointT>::Ptr>
+ProcessPointClouds<PointT>::euclideanClustering(const typename pcl::PointCloud<PointT>::Ptr cloud,
+                                                const float clusterTolerance,
+                                                const int minSize,
+                                                const int maxSize)
+{
+
+    // Time clustering process
+    auto startTime = std::chrono::steady_clock::now();
+
+    std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
+
+    KdTree *tree(new KdTree);
+    tree->insertCloud(cloud);
+
+    std::vector<bool> processed(cloud->points.size(), false);
+
+    for (size_t idx = 0; idx < cloud->points.size(); ++idx)
+    {
+        if (processed[idx] == false)
+        {
+            std::vector<int> cluster_idx;
+            typename pcl::PointCloud<PointT>::Ptr cluster(new pcl::PointCloud<PointT>);
+
+            Proximity(idx, cloud, cluster, processed, tree, clusterTolerance);
+
+            if (cluster->points.size() >= minSize && cluster->points.size() <= maxSize)
+            {
+                clusters.push_back(cluster);
+            }
+        }
+    }
+
+    auto endTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    std::cout << "euclidean clustering took " << elapsedTime.count()
+              << " milliseconds and found " << clusters.size() << " clusters" << std::endl;
+
+    return clusters;
 }
 
 template <typename PointT>
