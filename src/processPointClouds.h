@@ -17,7 +17,6 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 template <typename PointT>
