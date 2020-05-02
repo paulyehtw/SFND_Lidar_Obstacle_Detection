@@ -69,7 +69,8 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(ty
 }
 
 template <typename PointT>
-std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::SeparateClouds(pcl::PointIndices::Ptr inliers, typename pcl::PointCloud<PointT>::Ptr cloud)
+std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr>
+ProcessPointClouds<PointT>::SeparateClouds(pcl::PointIndices::Ptr inliers, typename pcl::PointCloud<PointT>::Ptr cloud)
 {
     // TODO: Create two new point clouds, one cloud with obstacles and other with segmented plane
 
@@ -88,12 +89,91 @@ std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT
     extract.setNegative(true);
     extract.filter(*obstacleCloud);
 
-    std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> segResult(obstacleCloud, planeCloud);
+    std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> segResult(obstacleCloud,
+                                                                                                      planeCloud);
     return segResult;
 }
 
 template <typename PointT>
-std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::SegmentPlane(typename pcl::PointCloud<PointT>::Ptr cloud, int maxIterations, float distanceThreshold)
+std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr>
+ProcessPointClouds<PointT>::RansacPlane(const typename pcl::PointCloud<PointT>::Ptr cloud,
+                                        const int maxIterations,
+                                        const float distanceTol)
+{
+    // Time segmentation process
+    auto startTime = std::chrono::steady_clock::now();
+
+    std::unordered_set<int> inliersResult;
+    pcl::PointIndices::Ptr inlierCloud(new pcl::PointIndices);
+    srand(time(NULL));
+
+    for (int iteration = 0; iteration < maxIterations; iteration++)
+    {
+        std::vector<int> inliersTemp{};
+
+        // Randomly select 3 points
+        while (inliersTemp.size() < 3)
+        {
+            inliersTemp.push_back(rand() % (cloud->points.size()));
+        }
+
+        // Pick those 3 points from the cloud
+        float x1, y1, z1, x2, y2, z2, x3, y3, z3;
+        auto itr = inliersTemp.begin();
+        x1 = cloud->points[*itr].x;
+        y1 = cloud->points[*itr].y;
+        z1 = cloud->points[*itr].z;
+        itr++;
+        x2 = cloud->points[*itr].x;
+        y2 = cloud->points[*itr].y;
+        z2 = cloud->points[*itr].z;
+        itr++;
+        x3 = cloud->points[*itr].x;
+        y3 = cloud->points[*itr].y;
+        z3 = cloud->points[*itr].z;
+
+        // By calculating normal vector of vectors v1(point1->point2) and v2(point1->point3)
+        // plane coefficients can be deducted as below :
+        float A = (y2 - y1) * (z3 - z1) - (z2 - z1) * (y3 - y1);
+        float B = (z2 - z1) * (x3 - x1) - (x2 - x1) * (z3 - z1);
+        float C = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+        float D = -(A * x1 + B * y1 + C * z1);
+
+        // Measure distance between every point and fitted line
+        // If distance is smaller than threshold count it as inlier
+        for (int i = 0; i < cloud->points.size(); i++)
+        {
+            float x = cloud->points[i].x;
+            float y = cloud->points[i].y;
+            float z = cloud->points[i].z;
+            float numerator = abs(A * x + B * y + C * z + D);
+            float denominator = sqrt(A * A + B * B + C * C);
+            float d = numerator / denominator;
+            if (d <= distanceTol)
+            {
+                inliersTemp.push_back(i);
+            }
+        }
+
+        if (inliersTemp.size() > inlierCloud->indices.size())
+        {
+            inlierCloud->indices = inliersTemp;
+        }
+    }
+
+    auto endTime = std::chrono::steady_clock::now();
+    auto ellapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    std::cout << "Ransac took " << ellapsedTime.count() << " millicesonds" << std::endl;
+
+    return SeparateClouds(inlierCloud, cloud);
+}
+
+template <typename PointT>
+std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr>
+ProcessPointClouds<PointT>::SegmentPlane(
+    typename pcl::PointCloud<PointT>::Ptr cloud,
+    int maxIterations,
+    float distanceThreshold)
 {
     // Time segmentation process
     auto startTime = std::chrono::steady_clock::now();
@@ -116,12 +196,15 @@ std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT
     auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
     std::cout << "plane segmentation took " << elapsedTime.count() << " milliseconds" << std::endl;
 
-    std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> segResult = SeparateClouds(inliers, cloud);
-    return segResult;
+    return SeparateClouds(inliers, cloud);
 }
 
 template <typename PointT>
-std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::Clustering(typename pcl::PointCloud<PointT>::Ptr cloud, float clusterTolerance, int minSize, int maxSize)
+std::vector<typename pcl::PointCloud<PointT>::Ptr>
+ProcessPointClouds<PointT>::Clustering(typename pcl::PointCloud<PointT>::Ptr cloud,
+                                       float clusterTolerance,
+                                       int minSize,
+                                       int maxSize)
 {
 
     // Time clustering process
